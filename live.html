@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Live Vehicle Platform — Professional Dashboard</title>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <style>
+    :root{
+      --bg:#f4f6f9;
+      --card:#ffffff;
+      --accent:#0b72d6;
+      --accent-2:#0f9d58;
+      --muted:#6b7280;
+      --danger:#ef4444;
+      --radius:14px;
+      --shadow: 0 8px 24px rgba(16,24,40,0.06);
+      font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif;
+      color-scheme: light;
+    }
+    *{box-sizing:border-box}
+    body{background:var(--bg); margin:0; color:#111; -webkit-font-smoothing:antialiased}
+    a{color:inherit}
+    header{
+      background:linear-gradient(90deg,#ffffff,#eef4ff);
+      padding:18px 28px;
+      box-shadow: 0 2px 8px rgba(16,24,40,0.04);
+      display:flex;
+      align-items:center;
+      gap:16px;
+      position:sticky; top:0; z-index:60;
+    }
+    header .logo{
+      width:48px; height:48px; display:inline-grid; place-items:center;
+      border-radius:10px; background:linear-gradient(180deg,#ffdede,#fff);
+      box-shadow:0 4px 12px rgba(0,0,0,0.04);
+    }
+    header h1{margin:0; font-size:20px}
+    header .subtitle{color:var(--muted); font-size:13px}
+
+    .wrap{max-width:1200px; margin:22px auto; padding:0 16px}
+    .topbar{display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:18px}
+    .controls{display:flex; gap:12px; align-items:center; flex-wrap:wrap}
+    .select, .btn, .smallbtn {
+      padding:9px 12px; border-radius:10px; border:1px solid #e6e9ee; background:#fff; font-size:14px;
+    }
+    .btn{cursor:pointer; background:var(--accent); color:#fff; border:none}
+    .smallbtn{background:#fff; color:var(--accent); border:1px solid var(--accent); cursor:pointer}
+    .muted{color:var(--muted)}
+    .card{background:var(--card); border-radius:var(--radius); padding:18px; box-shadow:var(--shadow); margin-bottom:18px}
+
+    /* grid layout */
+    .grid{display:grid; grid-template-columns: 1fr 360px; gap:18px}
+    .fullwidth{grid-column: 1 / -1}
+
+    /* latest info */
+    .kv{display:flex; gap:12px; margin:8px 0; align-items:baseline}
+    .kv b{width:150px; color:#111}
+
+    /* table */
+    table{width:100%; border-collapse: collapse; font-size:14px}
+    th, td{padding:10px 12px; border-bottom:1px solid #eef2f7; text-align:left; vertical-align:middle}
+    th{background:#f7fbff; color:var(--accent); font-weight:600; position:sticky; top:0}
+    tbody tr:hover{background:#fbfdff}
+    .table-wrap{overflow:auto; max-height:420px; border-radius:10px; border:1px solid #eef2f7}
+
+    /* badges */
+    .badge{padding:6px 10px; border-radius:999px; font-weight:600; font-size:13px}
+    .ok{background:#ecfdf5; color: #15803d; border:1px solid rgba(21,128,61,0.08)}
+    .err{background:#fff1f2; color: #be123c}
+
+    /* small helpers */
+    .right{margin-left:auto}
+    .center{display:flex; align-items:center; justify-content:center}
+    .small{font-size:12px; color:var(--muted)}
+    .tiny{font-size:11px; color:var(--muted)}
+
+    /* responsive */
+    @media (max-width:1060px){
+      .grid{grid-template-columns: 1fr}
+      header{flex-direction:row; gap:12px}
+    }
+    @media (max-width:480px){
+      header{padding:12px}
+      .kv b{width:110px}
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo" aria-hidden>🚗</div>
+    <div>
+      <h1>Live Vehicle Platform</h1>
+      <div class="subtitle">Real-time fleet telemetry — speeds, temps, history</div>
+    </div>
+
+    <div style="margin-left:auto; display:flex; gap:8px; align-items:center">
+      <div class="small">Auto refresh</div>
+      <select id="refreshInterval" class="select" title="Refresh interval" style="width:110px;">
+        <option value="3000">3s</option>
+        <option value="5000" selected>5s</option>
+        <option value="10000">10s</option>
+        <option value="30000">30s</option>
+      </select>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div class="topbar">
+      <div class="controls">
+        <select id="deviceSelect" class="select">
+          <option value="__all">All devices (live)</option>
+        </select>
+
+        <button id="refreshNow" class="smallbtn">Refresh now</button>
+
+        <div class="small" style="margin-left:8px">Showing last <span id="rowsCount">—</span> records</div>
+      </div>
+
+      <div style="display:flex; gap:12px; align-items:center">
+        <div class="small">Status:</div>
+        <div id="statusBadge" class="badge tiny" style="background:#fff3cd; color:#b45309">Loading…</div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <!-- left column -->
+      <div>
+        <div class="card" id="latestCard" role="region" aria-live="polite">
+          <h2 style="margin-top:0">Latest Device Data</h2>
+          <div id="latestInfo">
+            <div class="kv"><b>Device ID</b><div id="latest_id">--</div></div>
+            <div class="kv"><b>Person Name</b><div id="latest_person">--</div></div>
+            <div class="kv"><b>Location</b><div id="latest_location">--</div></div>
+            <div class="kv"><b>GPS</b><div id="latest_gps">--</div></div>
+            <div class="kv"><b>Speed</b><div id="latest_speed">--</div><div class="muted">km/h</div></div>
+            <div class="kv"><b>Engine Temp</b><div id="latest_temp">--</div><div class="muted">°C</div></div>
+            <div class="kv"><b>Status</b><div id="latest_status">--</div></div>
+            <div class="kv"><b>Timestamp</b><div id="latest_ts">--</div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-top:0">All Vehicle History (latest first)</h3>
+          <div class="table-wrap" aria-live="polite">
+            <table id="historyTable">
+              <thead>
+                <tr>
+                  <th>ID</th><th>Person</th><th>Location</th><th>Speed</th><th>Engine Temp</th><th>Status</th><th>GPS</th><th>Timestamp</th>
+                </tr>
+              </thead>
+              <tbody id="historyBody">
+                <tr><td colspan="8" class="tiny">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- right column (summary) -->
+      <div>
+        <div class="card">
+          <h3 style="margin-top:0">Quick Summary</h3>
+          <div class="kv"><b>Total Devices</b><div id="summaryDevices">—</div></div>
+          <div class="kv"><b>Records</b><div id="summaryRows">—</div></div>
+          <div class="kv"><b>Latest Speed</b><div id="summarySpeed">—</div></div>
+          <div style="height:18px"></div>
+          <div class="small muted">Tip: choose a device to see device-only history & charts</div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-top:0">Status</h3>
+          <div class="kv"><b>API</b><div id="apiStatus">—</div></div>
+          <div class="kv"><b>Last fetched</b><div id="lastFetched">—</div></div>
+        </div>
+      </div>
+
+      <!-- charts - full width below table -->
+      <div class="fullwidth">
+        <div class="card">
+          <h3 style="margin-top:0">Speed Trend (latest points)</h3>
+          <canvas id="speedChart" style="width:100%; height:320px"></canvas>
+        </div>
+
+        <div class="card" style="margin-top:12px">
+          <h3 style="margin-top:0">Engine Temp Trend (latest points)</h3>
+          <canvas id="tempChart" style="width:100%; height:320px"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+/*
+  Professional dashboard JS (Option C)
+  - Paste this entire file as index.html and set API_URL below
+  - Chart.js is used for charts
+  - Polls API, supports device selector, shows table and trends below table
+*/
+
+const API_URL = "https://k4w2chg414.execute-api.ap-south-1.amazonaws.com/default/myproducts-api"; // <-- your API
+
+// UI elements
+const deviceSelect = document.getElementById('deviceSelect');
+const refreshNow = document.getElementById('refreshNow');
+const refreshIntervalSelect = document.getElementById('refreshInterval');
+
+const statusBadge = document.getElementById('statusBadge');
+const apiStatus = document.getElementById('apiStatus');
+const lastFetched = document.getElementById('lastFetched');
+const rowsCount = document.getElementById('rowsCount');
+
+const latest_id = document.getElementById('latest_id');
+const latest_person = document.getElementById('latest_person');
+const latest_location = document.getElementById('latest_location');
+const latest_gps = document.getElementById('latest_gps');
+const latest_speed = document.getElementById('latest_speed');
+const latest_temp = document.getElementById('latest_temp');
+const latest_status = document.getElementById('latest_status');
+const latest_ts = document.getElementById('latest_ts');
+
+const summaryDevices = document.getElementById('summaryDevices');
+const summaryRows = document.getElementById('summaryRows');
+const summarySpeed = document.getElementById('summarySpeed');
+
+const historyBody = document.getElementById('historyBody');
+
+let refreshMs = Number(refreshIntervalSelect.value);
+let pollTimer = null;
+let lastData = []; // array of records (oldest->newest)
+let speedChart = null, tempChart = null;
+
+// event handlers
+refreshNow.addEventListener('click', () => fetchAndRender(true));
+refreshIntervalSelect.addEventListener('change', () => {
+  refreshMs = Number(refreshIntervalSelect.value);
+  restartPoll();
+});
+deviceSelect.addEventListener('change', () => renderFromCache());
+
+/* utils */
+function safeGet(obj, keys){
+  for(const k of keys) if(obj[k] !== undefined) return obj[k];
+  return undefined;
+}
+function fmtDate(ts){
+  if(!ts) return "--";
+  const d = new Date(ts);
+  if(isNaN(d.getTime())) return String(ts);
+  return d.toLocaleString();
+}
+function escapeHTML(s){
+  if(s===null || s===undefined) return '';
+  return String(s).replace(/[&<>"'`]/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','`':'&#x60;'
+  }[c]));
+}
+
+/* fetch API and render */
+async function fetchAndRender(forced=false){
+  // indicate loading
+  statusBadge.innerText = 'Loading…';
+  statusBadge.className = 'badge tiny';
+  try{
+    const res = await fetch(API_URL, { cache: 'no-store' });
+    lastFetched.innerText = new Date().toLocaleString();
+    apiStatus.innerText = `${res.status} ${res.statusText}`;
+
+    if(!res.ok){
+      statusBadge.innerText = `API ${res.status}`;
+      statusBadge.style.background = '#fff1f0';
+      statusBadge.style.color = '#b91c1c';
+      apiStatus.innerText = `HTTP ${res.status}`;
+      return;
+    }
+
+    const payload = await res.json();
+
+    // The API returns array (history). If it's object with Items, handle too.
+    let items = [];
+    if(Array.isArray(payload)) items = payload;
+    else if(Array.isArray(payload.Items)) items = payload.Items;
+    else if(payload.body){ // maybe proxy response string
+      try{ items = JSON.parse(payload.body); } catch(e){ items = []; }
+    } else {
+      // fallback: if it's an object with numeric keys
+      items = Array.isArray(payload.data) ? payload.data : [];
+    }
+
+    // Normalize to objects
+    items = items.map(it => (typeof it === 'string') ? tryParseJSON(it) || {} : it || {});
+
+    // ensure timestamps available & sort oldest->newest
+    items.forEach(it => {
+      if(!it.timestamp && (it.ts || it.time)) it.timestamp = it.ts || it.time;
+    });
+    items.sort((a,b) => {
+      const ta = new Date(a.timestamp || 0).getTime() || 0;
+      const tb = new Date(b.timestamp || 0).getTime() || 0;
+      return ta - tb;
+    });
+
+    // update cache
+    lastData = items;
+
+    // update UI pieces
+    rowsCount.innerText = items.length;
+    summaryRows.innerText = items.length;
+    const uniqueDevices = Array.from(new Set(items.map(i => (i.id || i.device_id || '').toString()).filter(Boolean)));
+    summaryDevices.innerText = uniqueDevices.length || '0';
+
+    // populate device select (preserve selection)
+    const prev = deviceSelect.value;
+    populateDeviceSelect(uniqueDevices);
+    if([...deviceSelect.options].some(o=>o.value===prev)) deviceSelect.value = prev;
+
+    // render top card and table & charts
+    renderFromCache();
+
+    statusBadge.innerText = 'OK';
+    statusBadge.className = 'badge tiny ok';
+    apiStatus.innerText = 'OK';
+  }catch(err){
+    console.error('Fetch error', err);
+    statusBadge.innerText = 'Fetch error';
+    statusBadge.style.background = '#fff1f0';
+    statusBadge.style.color = '#991b1b';
+    apiStatus.innerText = 'Error';
+  }
+}
+
+function tryParseJSON(s){
+  try{ return JSON.parse(s); }catch(e){ return null; }
+}
+
+function populateDeviceSelect(ids){
+  // ids already unique
+  deviceSelect.innerHTML = '<option value="__all">All devices (live)</option>';
+  ids.forEach(id => {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.innerText = id;
+    deviceSelect.appendChild(opt);
+  });
+}
+
+/* rendering functions */
+function renderFromCache(){
+  const sel = deviceSelect.value || '__all';
+  if(sel === '__all'){
+    // latest overall = last element if any
+    const latest = lastData[lastData.length - 1];
+    if(latest) updateLatestCard(latest);
+    else clearLatestCard();
+    renderHistoryTable(lastData.slice().reverse());
+    updateCharts(lastData.slice(-500)); // last 500 points
+  } else {
+    const filtered = lastData.filter(r => (r.id || r.device_id || '').toString() === sel);
+    if(filtered.length){
+      updateLatestCard(filtered[filtered.length - 1]);
+      renderHistoryTable(filtered.slice().reverse());
+      updateCharts(filtered.slice(-500));
+    } else {
+      clearLatestCard();
+      renderHistoryTable([]);
+      updateCharts([]);
+    }
+  }
+}
+
+function updateLatestCard(row){
+  latest_id.innerText = row.id || row.device_id || row.ID || '--';
+  latest_person.innerText = safeGet(row, ["Person Name","PersonName","person","person_name"]) || '--';
+  latest_location.innerText = row.location || '--';
+  latest_gps.innerText = row.gps || '--';
+  latest_speed.innerText = (row.speed !== undefined && row.speed !== '') ? row.speed : '--';
+  latest_temp.innerText = (row.engine_temp !== undefined && row.engine_temp !== '') ? (row.engine_temp) : (row.engineTemp || '--');
+  latest_status.innerText = row.status || '--';
+  latest_ts.innerText = fmtDate(row.timestamp || row.ts || row.time) || '--';
+
+  // summary speed
+  summarySpeed.innerText = (row.speed !== undefined && row.speed !== '') ? row.speed + ' km/h' : '—';
+}
+function clearLatestCard(){
+  latest_id.innerText = '--';
+  latest_person.innerText = '--';
+  latest_location.innerText = '--';
+  latest_gps.innerText = '--';
+  latest_speed.innerText = '--';
+  latest_temp.innerText = '--';
+  latest_status.innerText = '--';
+  latest_ts.innerText = '--';
+  summarySpeed.innerText = '--';
+}
+
+function renderHistoryTable(rows){
+  if(!rows || rows.length === 0){
+    historyBody.innerHTML = `<tr><td colspan="8" class="tiny">No records</td></tr>`;
+    return;
+  }
+  // limit for display (performance) - show latest 1000
+  const out = rows.slice(0,1000).map(r => {
+    const id = escapeHTML(r.id || r.device_id || r.ID || '--');
+    const person = escapeHTML(safeGet(r, ["Person Name","PersonName","person","person_name"]) || '--');
+    const location = escapeHTML(r.location || '--');
+    const speed = (r.speed !== undefined && r.speed !== '') ? escapeHTML(r.speed) : '--';
+    const temp = (r.engine_temp !== undefined && r.engine_temp !== '') ? escapeHTML(r.engine_temp || r.engineTemp) : '--';
+    const status = escapeHTML(r.status || '--');
+    const gps = escapeHTML(r.gps || '--');
+    const ts = escapeHTML(fmtDate(r.timestamp || r.ts || r.time || ''));
+    return `<tr>
+      <td>${id}</td>
+      <td>${person}</td>
+      <td>${location}</td>
+      <td>${speed}</td>
+      <td>${temp}</td>
+      <td>${status}</td>
+      <td style="max-width:180px; word-break:break-all">${gps}</td>
+      <td>${ts}</td>
+    </tr>`;
+  }).join('');
+  historyBody.innerHTML = out;
+}
+
+/* Charts (Chart.js) - update with newest data array (oldest->newest) */
+function updateCharts(data){
+  // labels are short timestamps
+  const labels = data.map(d => {
+    const t = d.timestamp || d.ts || d.time || '';
+    return t ? (new Date(t)).toLocaleTimeString() : '';
+  });
+
+  const speeds = data.map(d => {
+    const v = d.speed ?? d.spd ?? d.vehicle_speed;
+    return (v === '' || v === undefined) ? null : Number(v);
+  });
+
+  const temps = data.map(d => {
+    const v = d.engine_temp ?? d.engineTemp ?? d.temp;
+    return (v === '' || v === undefined) ? null : Number(v);
+  });
+
+  // create or update speedChart
+  if(!speedChart){
+    const ctx = document.getElementById('speedChart').getContext('2d');
+    speedChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Speed (km/h)',
+          data: speeds,
+          borderColor: '#0b72d6',
+          backgroundColor: 'rgba(11,114,214,0.08)',
+          fill: true,
+          pointRadius: 2,
+          tension: 0.15
+        }]
+      },
+      options: {
+        interaction: {mode:'index', intersect:false},
+        scales: { x: { ticks:{maxRotation:30, autoSkip:true, maxTicksLimit:12} }, y: { beginAtZero:true } },
+        maintainAspectRatio: false
+      }
+    });
+  } else {
+    speedChart.data.labels = labels;
+    speedChart.data.datasets[0].data = speeds;
+    speedChart.update();
+  }
+
+  // tempChart
+  if(!tempChart){
+    const ctx2 = document.getElementById('tempChart').getContext('2d');
+    tempChart = new Chart(ctx2, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Engine Temp (°C)',
+          data: temps,
+          borderColor: '#ef4444',
+          backgroundColor: 'rgba(239,68,68,0.08)',
+          fill: true,
+          pointRadius: 2,
+          tension: 0.15
+        }]
+      },
+      options: {
+        interaction: {mode:'index', intersect:false},
+        scales: { x: { ticks:{maxRotation:30, autoSkip:true, maxTicksLimit:12} }, y: { beginAtZero:false } },
+        maintainAspectRatio: false
+      }
+    });
+  } else {
+    tempChart.data.labels = labels;
+    tempChart.data.datasets[0].data = temps;
+    tempChart.update();
+  }
+}
+
+/* polling */
+function restartPoll(){
+  if(pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(() => fetchAndRender(), refreshMs);
+  // run now
+  fetchAndRender();
+}
+
+/* initial start */
+restartPoll();
+
+</script>
+</body>
+</html>
